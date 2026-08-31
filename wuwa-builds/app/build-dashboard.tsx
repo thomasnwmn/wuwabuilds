@@ -12,7 +12,13 @@ type Build = {
 };
 
 function assetSlug(value: string) {
-  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
 function statIconName(label: string) {
@@ -58,22 +64,71 @@ export default function BuildDashboard() {
 
   useEffect(() => {
     let isCurrent = true;
-    fetch(`/builds.json?v=${Date.now()}`)
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not load builds");
-        return response.json() as Promise<Build[]>;
-      })
-      .then((data) => {
+    
+    async function loadBuilds() {
+      try {
+        const supabase = (await import("@/lib/supabase/client")).createClient();
+        
+        // Fetch builds with all relations
+        const { data, error } = await supabase
+          .from('builds')
+          .select(`
+            *,
+            resonator:resonators(*),
+            weapon:weapons(*),
+            stats:build_stats(*),
+            echoes:build_echoes(*, echo:echoes(*))
+          `)
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
         if (!isCurrent) return;
-        setBuilds(data);
+        if (!data || data.length === 0) return;
+
+        // Map database schema back to the shape the UI expects safely
+        const mappedBuilds = data.map(b => ({
+          id: b.id,
+          builderId: (b.builder_initials || 'U') + '-' + (b.builder_name || 'Unknown'),
+          name: b.builder_name || 'Unknown',
+          initials: b.builder_initials || 'U',
+          role: b.role || 'MAIN DAMAGE',
+          character: b.resonator?.name || 'Unknown',
+          weapon: { 
+            name: b.weapon?.name || 'Unknown', 
+            type: b.weapon?.type || 'Sword', 
+            rarity: b.weapon?.rarity || 4 
+          },
+          level: b.level || 'LEVEL 90',
+          rank: b.rank || 'SEQUENCE 0',
+          headline: b.headline || '',
+          description: b.description || '',
+          element: b.resonator?.element || 'Spectro',
+          score: b.score?.toString() || "0",
+          echoSet: b.echo_set || '',
+          stats: (b.stats || []).map((s: any) => ({ label: s.label || '', value: s.value || '' })),
+          echoes: (b.echoes || []).map((e: any) => ({
+            cost: e.echo?.cost || '4',
+            name: e.echo?.name || 'Unknown',
+            set: e.echo_set || '',
+            stat: e.main_stat || '',
+            substat: e.substat || ''
+          })).sort((a: any, b: any) => parseInt(b.cost) - parseInt(a.cost)), // Sort echoes by cost desc (4,3,3,1,1)
+          notes: b.notes || []
+        }));
+
+        setBuilds(mappedBuilds);
         const requestedId = new URLSearchParams(window.location.search).get("build");
-        const currentBuild = data.find((build) => build.id === requestedId) ?? data[0];
+        const currentBuild = mappedBuilds.find((build: any) => build.id === requestedId) ?? mappedBuilds[0];
         if (currentBuild) {
           setSelectedBuildId(currentBuild.id);
           setSelectedBuilderId(currentBuild.builderId);
         }
-      })
-      .catch(() => { if (isCurrent) setLoadError(true); });
+      } catch (err) {
+        if (isCurrent) setLoadError(true);
+      }
+    }
+
+    loadBuilds();
     return () => { isCurrent = false; };
   }, []);
 
@@ -266,9 +321,9 @@ export default function BuildDashboard() {
           <div className="card-heading"><span>02 / LOADOUT</span><p>CALIBRATED</p></div>
           <div className="weapon-display"><div className="weapon-glyph"><img src={weaponIcon} alt="" /></div><div><p>WEAPON</p><h2>{build.weapon.name}</h2><span>{build.weapon.type} <b>•</b> {"★".repeat(build.weapon.rarity)}</span></div><span className="weapon-level">Lv. 90</span></div>
           <div className="set-rule" /><div className="echo-set"><span>SONATA EFFECT</span><strong>{build.echoSet}</strong><em>5 / 5</em></div>
-          <div className="echo-list">{build.echoes.map((echo) => {
+          <div className="echo-list">{build.echoes.map((echo, index) => {
             const echoImage = echo.image ?? `/echoes/${assetSlug(echo.name)}.webp`;
-            return <article className="echo-row" key={`${echo.cost}-${echo.name}`}><span className="echo-cost">{echo.cost}</span><span className="echo-thumb"><img src={echoImage} alt="" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} /></span><div><h3>{echo.name}</h3><p>{echo.set}</p></div><span className="echo-stat">{echo.stat}<small>{echo.substat}</small></span></article>;
+            return <article className="echo-row" key={`${echo.cost}-${echo.name}-${index}`}><span className="echo-cost">{echo.cost}</span><span className="echo-thumb"><img src={echoImage} alt="" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} /></span><div><h3>{echo.name}</h3><p>{echo.set}</p></div><span className="echo-stat">{echo.stat}<small>{echo.substat}</small></span></article>;
           })}</div>
         </section>
 
