@@ -174,7 +174,9 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
     return acc
   }, {} as Record<string, number>)
 
-  const activeSets = Object.entries(setCounts).filter(([_, count]) => count >= 2).map(([name, count]) => `${count >= 5 ? '5' : '2'}-Piece ${name}`)
+  const activeSets = Object.entries(setCounts)
+    .filter(([_, count]) => (count as number) >= 2)
+    .map(([name, count]) => `${(count as number) >= 5 ? '5' : '2'}-Piece ${name}`)
 
   // Handlers
   const handleStatChange = (index: number, field: 'label'|'value', val: string) => {
@@ -197,7 +199,7 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
     }
     setSubmitting(true)
 
-    const finalBuild = { ...formData, notes: notesStr.split("\n").filter(n => n.trim() !== "") }
+    const finalBuild = { ...formData, notes: notesStr.split("\n").filter((n: string) => n.trim() !== "") }
 
     let savedBuildId = buildId
 
