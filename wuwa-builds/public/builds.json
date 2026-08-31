@@ -1,0 +1,128 @@
+[
+  {
+    "id": "thomas-jinhsi",
+    "builderId": "thomas",
+    "name": "Thomas",
+    "initials": "T",
+    "role": "MAIN DAMAGE",
+    "character": "Jinhsi",
+    "weapon": { "name": "Ages of Harvest", "type": "Broadblade", "rarity": 5 },
+    "level": "LEVEL 90",
+    "rank": "SEQUENCE 1",
+    "headline": "Celestial light, tuned for the cleanest liberation windows.",
+    "description": "A high-crit Spectro build that prioritizes fast outro swaps and heavy burst damage.",
+    "element": "Spectro",
+    "score": "94.8",
+    "echoSet": "Celestial Light",
+    "stats": [
+      { "label": "HP", "value": "18450" },
+      { "label": "ATK", "value": "2450" },
+      { "label": "DEF", "value": "1120" },
+      { "label": "ENERGY REGEN", "value": "125.4%" },
+      { "label": "CRIT. RATE", "value": "78.6%" },
+      { "label": "CRIT. DMG", "value": "268.2%" },
+      { "label": "RESONANCE SKILL", "value": "+36.0%" },
+      { "label": "SPECTRO DMG", "value": "+72.0%" }
+    ],
+    "echoes": [
+      { "cost": "4 COST", "name": "Juè", "set": "Celestial Light", "stat": "CRIT. DMG", "substat": "Spectro +10.0%" },
+      { "cost": "3 COST", "name": "Chasm Guardian", "set": "Celestial Light", "stat": "Spectro DMG", "substat": "CRIT. Rate +8.7%" },
+      { "cost": "3 COST", "name": "Hoochief", "set": "Celestial Light", "stat": "Spectro DMG", "substat": "CRIT. DMG +19.8%" }
+    ],
+    "notes": ["Skill before liberation", "Swap after Incarnation", "Prioritize coordinated attacks"]
+  },
+  {
+    "id": "thomas-qingxiao",
+    "builderId": "thomas",
+    "name": "Thomas",
+    "initials": "T",
+    "role": "SUB DAMAGE",
+    "character": "Qingxiao",
+    "weapon": { "name": "Emerald of Genesis", "type": "Sword", "rarity": 5 },
+    "level": "LEVEL 90",
+    "rank": "SEQUENCE 0",
+    "headline": "Swift strikes, rapid combo setup.",
+    "description": "Aero focused setup for quick burst damage.",
+    "element": "Aero",
+    "score": "88.5",
+    "echoSet": "Sierra Gale",
+    "stats": [
+      { "label": "HP", "value": "16200" },
+      { "label": "ATK", "value": "1950" },
+      { "label": "DEF", "value": "950" },
+      { "label": "ENERGY REGEN", "value": "145.0%" },
+      { "label": "CRIT. RATE", "value": "65.4%" },
+      { "label": "CRIT. DMG", "value": "220.1%" },
+      { "label": "RESONANCE SKILL", "value": "+20.0%" },
+      { "label": "AERO DMG", "value": "+60.0%" }
+    ],
+    "echoes": [
+      { "cost": "4 COST", "name": "Feilian Beringal", "set": "Sierra Gale", "stat": "CRIT. RATE", "substat": "Crit. DMG +15.0%" },
+      { "cost": "3 COST", "name": "Cyan-Feathered Heron", "set": "Sierra Gale", "stat": "Aero DMG", "substat": "ATK +10.0%" },
+      { "cost": "3 COST", "name": "Hoartoise", "set": "Sierra Gale", "stat": "Aero DMG", "substat": "Liberation +8.0%" }
+    ],
+    "notes": ["Focus on skill usage", "Build concerto quickly"]
+  },
+  {
+    "id": "maks-rover",
+    "builderId": "maks",
+    "name": "maks",
+    "initials": "M",
+    "role": "QUICKSWAP DPS",
+    "character": "Rover",
+    "weapon": { "name": "Emerald of Genesis", "type": "Sword", "rarity": 5 },
+    "level": "LEVEL 90",
+    "rank": "SEQUENCE 6",
+    "headline": "A sharp Havoc core built to erase the space between rotations.",
+    "description": "High field-time efficiency with a crit-forward setup for decisive Dreamless detonations.",
+    "element": "Havoc",
+    "score": "91.2",
+    "echoSet": "Sun-sinking Eclipse",
+    "stats": [
+      { "label": "HP", "value": "17500" },
+      { "label": "ATK", "value": "2100" },
+      { "label": "DEF", "value": "1050" },
+      { "label": "ENERGY REGEN", "value": "115.0%" },
+      { "label": "CRIT. RATE", "value": "74.1%" },
+      { "label": "CRIT. DMG", "value": "254.4%" },
+      { "label": "RESONANCE LIB.", "value": "+42.0%" },
+      { "label": "HAVOC DMG", "value": "+62.0%" }
+    ],
+    "echoes": [
+      { "cost": "4 COST", "name": "Dreamless", "set": "Sun-sinking Eclipse", "stat": "CRIT. RATE", "substat": "Crit. DMG +21.0%" },
+      { "cost": "3 COST", "name": "Spearback", "set": "Sun-sinking Eclipse", "stat": "Havoc DMG", "substat": "ATK +11.6%" },
+      { "cost": "3 COST", "name": "Roseshroom", "set": "Sun-sinking Eclipse", "stat": "Havoc DMG", "substat": "Liberation +9.4%" }
+    ],
+    "notes": ["Use intro after concerto", "Cast Dreamless at peak forte", "Swap during outro animation"]
+  },
+  {
+    "id": "maks-yangyang-xuanling",
+    "builderId": "maks",
+    "name": "maks",
+    "initials": "M",
+    "role": "SUPPORT",
+    "character": "Yangyang Xuanling",
+    "weapon": { "name": "Commando of Conviction", "type": "Sword", "rarity": 4 },
+    "level": "LEVEL 80",
+    "rank": "SEQUENCE 3",
+    "headline": "Constant grouping and energy battery.",
+    "description": "Energy regen focused build to keep the team topped up.",
+    "element": "Aero",
+    "score": "85.0",
+    "echoSet": "Moonlit Clouds",
+    "stats": [
+      { "label": "HP", "value": "15000" },
+      { "label": "ATK", "value": "1400" },
+      { "label": "DEF", "value": "1200" },
+      { "label": "ENERGY REGEN", "value": "150.0%" },
+      { "label": "CRIT. RATE", "value": "50.0%" },
+      { "label": "AERO DMG", "value": "+30.0%" }
+    ],
+    "echoes": [
+      { "cost": "4 COST", "name": "Bell-Borne Geochelone", "set": "Moonlit Clouds", "stat": "CRIT. RATE", "substat": "Energy Regen +10.0%" },
+      { "cost": "3 COST", "name": "Cyan-Feathered Heron", "set": "Moonlit Clouds", "stat": "Energy Regen", "substat": "ATK +8.0%" },
+      { "cost": "3 COST", "name": "Chasm Guardian", "set": "Moonlit Clouds", "stat": "Energy Regen", "substat": "Liberation +5.0%" }
+    ],
+    "notes": ["Always swap in for outro", "Use liberation off cooldown"]
+  }
+]
