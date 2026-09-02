@@ -67,7 +67,7 @@ CREATE TABLE build_echoes (
   echo_id UUID REFERENCES echoes(id) ON DELETE RESTRICT,
   echo_set TEXT NOT NULL,
   main_stat TEXT NOT NULL,
-  substat TEXT NOT NULL
+  substats JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 -- ==============================================================================

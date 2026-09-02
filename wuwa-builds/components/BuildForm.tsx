@@ -1,18 +1,30 @@
 "use client"
-
 import { useState, useEffect, useRef } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
-function assetSlug(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/['’]/g, "") // Strip apostrophes so "Devotee's" becomes "devotees" instead of "devotee-s"
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+function assetSlug(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
+
+function getAssetUrl(folder: string, filename: string) {
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/game-assets/${folder}/${filename}`
+}
+
+const SONATA_EFFECTS = [
+  "Freezing Frost", "Molten Rift", "Void Thunder", "Sierra Gale", "Celestial Light", "Havoc Eclipse",
+  "Rejuvenating Glow", "Moonlit Clouds", "Endless Resonance", "Frosty Resolve", "Eternal Radiance",
+  "Midnight Veil", "Empyrean Anthem", "Tidebreaking Courage", "Gusts of Welkin", "Flaming Clawprint",
+  "Windward Pilgrimage", "Dream of the Lost", "Crown of Valor", "Law of Harmony", "Flamewing's Shadow",
+  "Thread of Severed Fate", "Halo of Starry Radiance", "Pact of Neonlight Leap", "Rite of Gilded Revelation",
+  "Trailblazing Star", "Chromatic Foam", "Sound of True Name", "Reel of Spliced Memories", "Wishes of Quiet Snowfall",
+  "Shadow of Shattered Dreams", "Song of Feathered Trace", "Heart of Evil's Purge", "Lamp of Nether Road"
+].map(name => ({ id: name, name }));
+
+const ECHO_SUBSTATS = [
+  "HP", "HP%", "ATK", "ATK%", "DEF", "DEF%", "CRIT. RATE", "CRIT. DMG", "Energy Regen",
+  "Resonance Skill DMG Bonus", "Basic Attack DMG Bonus", "Heavy Attack DMG Bonus", "Resonance Liberation DMG Bonus"
+];
 
 type DictionaryItem = { id: string, name: string, element?: string, type?: string, rarity?: number, cost?: string }
 
@@ -42,7 +54,12 @@ function SearchableSelect({
     <div ref={ref} style={{ position: "relative", width: "100%" }}>
       <button 
         type="button" onClick={() => setOpen(!open)}
-        className={`search-select-btn ${!selectedItem ? 'is-placeholder' : ''}`}
+        style={{
+          width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)",
+          border: "1px solid rgba(255,255,255,0.1)", color: selectedItem ? "#fff" : "var(--muted)",
+          display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer",
+          fontSize: "0.85rem", textAlign: "left"
+        }}
       >
         {selectedItem ? renderItem(selectedItem) : placeholder}
         <span style={{ fontSize: "0.7rem", opacity: 0.5 }}>▼</span>
@@ -89,17 +106,16 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   
-  // Dictionaries
   const [resonators, setResonators] = useState<DictionaryItem[]>([])
   const [weapons, setWeapons] = useState<DictionaryItem[]>([])
   const [echoesDict, setEchoesDict] = useState<DictionaryItem[]>([])
+  const [builders, setBuilders] = useState<{id: string, name: string}[]>([])
 
-  // Strip out joined relational data if editing an existing build
   const initialFormState = initialData?.build ? {
-    builder_name: initialData.build.builder_name || "",
-    builder_initials: initialData.build.builder_initials || "",
+    builder_id: initialData.build.builder_id || "",
     resonator_id: initialData.build.resonator_id || "",
     weapon_id: initialData.build.weapon_id || "",
+    weapon_ascension: initialData.build.weapon_ascension || 1,
     role: initialData.build.role || "MAIN DAMAGE",
     level: initialData.build.level || "LEVEL 90",
     rank: initialData.build.rank || "SEQUENCE 0",
@@ -109,8 +125,7 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
     echo_set: initialData.build.echo_set || "",
     notes: initialData.build.notes || []
   } : {
-    builder_name: "", builder_initials: "",
-    resonator_id: "", weapon_id: "",
+    builder_id: "", resonator_id: "", weapon_id: "", weapon_ascension: 1,
     role: "MAIN DAMAGE", level: "LEVEL 90", rank: "SEQUENCE 0",
     headline: "", description: "", score: 0, echo_set: "", notes: []
   }
@@ -124,26 +139,39 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
     { label: "BONUS DMG", value: "" }
   ])
 
-  const [echoes, setEchoes] = useState<any[]>(initialData?.echoes || Array(5).fill({ echo_id: "", set: "", main_stat: "", substat: "" }))
+  const [echoes, setEchoes] = useState<any[]>(
+    initialData?.echoes 
+      ? initialData.echoes.map((e: any) => {
+          let loadedSubstats: any[] = [];
+          if (Array.isArray(e.substats)) {
+            loadedSubstats = e.substats;
+          } else if (e.substat) {
+            loadedSubstats = [{ label: "Unknown", value: e.substat }];
+          }
+          const paddedSubstats = Array(5).fill(null).map((_, i) => loadedSubstats[i] || { label: "", value: "" });
+          return { ...e, set: e.echo_set || e.set || "", substats: paddedSubstats };
+        }) 
+      : Array(5).fill(null).map(() => ({ echo_id: "", set: "", main_stat: "", substats: Array(5).fill(null).map(() => ({ label: "", value: "" })) }))
+  )
 
   useEffect(() => {
     async function loadDictionaries() {
-      const [resData, wpData, echoData] = await Promise.all([
+      const [resData, wpData, echoData, buildersData] = await Promise.all([
         supabase.from("resonators").select("*").order("name"),
         supabase.from("weapons").select("*").order("name"),
-        supabase.from("echoes").select("*").order("name")
+        supabase.from("echoes").select("*").order("name"),
+        supabase.from("builders").select("*").order("sort_order")
       ])
       if (resData.data) setResonators(resData.data)
       if (wpData.data) setWeapons(wpData.data)
       if (echoData.data) setEchoesDict(echoData.data)
+      if (buildersData.data) setBuilders(buildersData.data)
       setLoading(false)
     }
     loadDictionaries()
   }, [])
 
-  // Auto-calculate score
   useEffect(() => {
-    // Basic heuristic for DPS Score: CR*2 + CD + (ATK / 50) + Bonus DMG
     let score = 0
     stats.forEach(s => {
       const val = parseFloat(s.value.replace(/[^0-9.]/g, ''))
@@ -153,18 +181,15 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
       if (s.label.includes("ATK")) score += val / 25
       if (s.label.includes("DMG")) score += val * 1.5
     })
-    
-    // Normalize roughly to out of 100
     const normalized = Math.min(100, Math.max(0, score / 4.5))
     setFormData(prev => ({ ...prev, score: parseFloat(normalized.toFixed(1)) }))
   }, [stats])
 
-  // Validation & Set Bonuses
   const totalCost = echoes.reduce((acc, e) => {
     if (!e.echo_id) return acc
     const dict = echoesDict.find(d => d.id === e.echo_id)
     if (!dict) return acc
-    const costNum = parseInt(dict.cost?.replace(/[^0-9]/g, '') || "0")
+    const costNum = parseInt(dict.cost || "0")
     return acc + costNum
   }, 0)
 
@@ -178,7 +203,6 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
     .filter(([_, count]) => (count as number) >= 2)
     .map(([name, count]) => `${(count as number) >= 5 ? '5' : '2'}-Piece ${name}`)
 
-  // Handlers
   const handleStatChange = (index: number, field: 'label'|'value', val: string) => {
     const newStats = [...stats]
     newStats[index] = { ...newStats[index], [field]: val }
@@ -188,6 +212,21 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
   const handleEchoChange = (index: number, field: string, val: string) => {
     const newEchoes = [...echoes]
     newEchoes[index] = { ...newEchoes[index], [field]: val }
+    setEchoes(newEchoes)
+  }
+
+  const handleSubstatChange = (echoIndex: number, subIndex: number, field: 'label'|'value', val: string) => {
+    const newEchoes = [...echoes]
+    const newSubstats = [...newEchoes[echoIndex].substats]
+    newSubstats[subIndex] = { ...newSubstats[subIndex], [field]: val }
+    if (field === 'label' && val !== "") {
+      const existing = newSubstats.filter((s, i) => i !== subIndex && s.label === val)
+      if (existing.length > 0) {
+        alert("An Echo cannot have duplicate substat types!");
+        return;
+      }
+    }
+    newEchoes[echoIndex].substats = newSubstats
     setEchoes(newEchoes)
   }
 
@@ -212,7 +251,6 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
       savedBuildId = data.id
     }
 
-    // Upsert Stats (delete old, insert new for simplicity)
     await supabase.from('build_stats').delete().eq('build_id', savedBuildId)
     const validStats = stats.filter(s => s.label && s.value).map(s => ({ 
       build_id: savedBuildId,
@@ -224,14 +262,13 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
       if (statError) alert("Error saving stats: " + statError.message)
     }
 
-    // Upsert Echoes
     await supabase.from('build_echoes').delete().eq('build_id', savedBuildId)
     const validEchoes = echoes.filter(e => e.echo_id).map(e => ({ 
       build_id: savedBuildId,
       echo_id: e.echo_id,
-      echo_set: e.set, // Map the local state 'set' to the database column 'echo_set'
-      main_stat: e.main_stat,
-      substat: e.substat
+      echo_set: e.set || e.echo_set || "",
+      main_stat: e.main_stat || "",
+      substats: e.substats.filter((s: any) => s.label && s.value)
     }))
     
     if (validEchoes.length > 0) {
@@ -246,28 +283,25 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
   if (loading) return <div style={{ color: "var(--muted)" }}>Loading archive...</div>
 
   return (
-    <form onSubmit={handleSubmit} className="frosted-card" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "32px" }}>
-      
-      {/* 1. Core Details */}
+    <form onSubmit={handleSubmit} className="frosted-card" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "32px", overflow: "visible" }}>
       <div>
         <h2 style={{ fontSize: "1rem", color: "var(--acid)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "16px" }}>1. Core Configuration</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Builder Name</label>
-            <input required type="text" value={formData.builder_name} onChange={e => setFormData({...formData, builder_name: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Builder Initials</label>
-            <input required type="text" maxLength={2} value={formData.builder_initials} onChange={e => setFormData({...formData, builder_initials: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
-          </div>
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Builder Profile</label>
+          <SearchableSelect 
+            items={builders.map(b => ({ id: b.id, name: b.name }))} 
+            value={formData.builder_id} 
+            onChange={val => setFormData({...formData, builder_id: val})} 
+            placeholder="Select Builder..." 
+          />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "16px" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Resonator</label>
             <SearchableSelect items={resonators} value={formData.resonator_id} onChange={val => setFormData({...formData, resonator_id: val})} placeholder="Search resonator..." 
               renderItem={(item) => (
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", width: "100%" }}>
-                  <img src={`/resonators/${item.name.toLowerCase() === 'rover' ? `${item.element?.toLowerCase()}-rover` : assetSlug(item.name)}.webp`} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", background: "rgba(255,255,255,0.1)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                  <img src={getAssetUrl('resonators', `${item.name.toLowerCase() === 'rover' ? `${item.element?.toLowerCase()}-rover` : assetSlug(item.name)}.webp`)} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", background: "rgba(255,255,255,0.1)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
                   <span><span style={{ color: "var(--acid)", fontSize: "0.6rem", marginRight: "8px" }}>{item.element?.toUpperCase()}</span> {item.name}</span>
                 </div>
               )} 
@@ -278,22 +312,30 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
             <SearchableSelect items={weapons} value={formData.weapon_id} onChange={val => setFormData({...formData, weapon_id: val})} placeholder="Search weapon..." 
               renderItem={(item) => (
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", width: "100%" }}>
-                  <img src={`/icons/${assetSlug(item.type || "")}.svg`} style={{ width: 18, height: 18, opacity: 0.8 }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                  <img src={getAssetUrl('weapons', `${assetSlug(item.name)}.webp`)} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", background: "rgba(255,255,255,0.05)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
                   <span style={{ flex: 1 }}>{item.name}</span>
                   <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>{"★".repeat(item.rarity || 4)}</span>
                 </div>
               )} 
             />
           </div>
+          <div>
+            <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Weapon Ascension</label>
+            <SearchableSelect 
+              items={[1,2,3,4,5].map(n => ({ id: n.toString(), name: `Ascension ${n}` }))} 
+              value={formData.weapon_ascension.toString()} 
+              onChange={val => setFormData({...formData, weapon_ascension: parseInt(val)})} 
+              placeholder="Select Ascension..." 
+            />
+          </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
           <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Role</label><input required type="text" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
-          <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Level</label><input required type="text" value={formData.level} onChange={e => setFormData({...formData, level: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
-          <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Rank</label><input required type="text" value={formData.rank} onChange={e => setFormData({...formData, rank: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
+          <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Resonator Level</label><input required type="text" value={formData.level} onChange={e => setFormData({...formData, level: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
+          <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Resonance Chain (Rank)</label><input required type="text" value={formData.rank} onChange={e => setFormData({...formData, rank: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
         </div>
       </div>
 
-      {/* 2. Echoes */}
       <div style={{ paddingTop: "24px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", marginBottom: "16px" }}>
           <h2 style={{ fontSize: "1rem", color: "var(--acid)", textTransform: "uppercase", letterSpacing: "0.1em", margin: 0 }}>2. Echo Loadout</h2>
@@ -307,26 +349,54 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
         
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {echoes.map((echo, idx) => (
-            <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px", alignItems: "center", background: "rgba(255,255,255,0.02)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)" }}>
-              <SearchableSelect 
-                items={echoesDict} value={echo.echo_id} onChange={val => handleEchoChange(idx, 'echo_id', val)} placeholder={`Echo ${idx + 1}`}
-                renderItem={(item) => (
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
-                    <img src={`/echoes/${assetSlug(item.name)}.webp`} style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover", background: "rgba(255,255,255,0.05)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
-                    <span style={{ flex: 1, textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" }}>{item.name}</span>
-                    <span style={{ color: "var(--muted)", fontSize: "0.7rem", flexShrink: 0 }}>{item.cost}</span>
+            <div key={idx} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "rgba(255,255,255,0.02)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "8px", alignItems: "center" }}>
+                <SearchableSelect 
+                  items={echoesDict} value={echo.echo_id} onChange={val => handleEchoChange(idx, 'echo_id', val)} placeholder={`Echo ${idx + 1}`}
+                  renderItem={(item) => (
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
+                      <img src={getAssetUrl('echoes', `${assetSlug(item.name)}.webp`)} style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover", background: "rgba(255,255,255,0.05)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                      <span style={{ flex: 1, textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" }}>{item.name}</span>
+                      <span style={{ color: "var(--muted)", fontSize: "0.7rem", flexShrink: 0 }}>{item.cost}</span>
+                    </div>
+                  )}
+                />
+                <SearchableSelect 
+                  items={SONATA_EFFECTS} value={SONATA_EFFECTS.find(s => s.name === echo.set)?.id || ""} onChange={val => handleEchoChange(idx, 'set', val)} placeholder="Sonata Effect"
+                  renderItem={(item) => (
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
+                      <img src={getAssetUrl('sonata', `${assetSlug(item.name)}.webp`)} style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", background: "rgba(255,255,255,0.05)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                      <span style={{ flex: 1, textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" }}>{item.name}</span>
+                    </div>
+                  )}
+                />
+                <input type="text" placeholder="Main Stat" value={echo.main_stat} onChange={e => handleEchoChange(idx, 'main_stat', e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: "0.85rem" }} />
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", marginTop: "4px" }}>
+                {echo.substats && echo.substats.map((sub: any, subIdx: number) => (
+                  <div key={subIdx} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <SearchableSelect 
+                      items={ECHO_SUBSTATS.filter(stat => !echo.substats.some((s: any, i: number) => i !== subIdx && s.label === stat)).map(name => ({ id: name, name }))} 
+                      value={sub.label} 
+                      onChange={val => handleSubstatChange(idx, subIdx, 'label', val)} 
+                      placeholder="Substat..." 
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Value" 
+                      value={sub.value} 
+                      onChange={e => handleSubstatChange(idx, subIdx, 'value', e.target.value)} 
+                      style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: "0.75rem" }} 
+                    />
                   </div>
-                )}
-              />
-              <input type="text" placeholder="Set (e.g. Celestial Light)" value={echo.set} onChange={e => handleEchoChange(idx, 'set', e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: "0.85rem" }} />
-              <input type="text" placeholder="Main Stat" value={echo.main_stat} onChange={e => handleEchoChange(idx, 'main_stat', e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: "0.85rem" }} />
-              <input type="text" placeholder="Substat" value={echo.substat} onChange={e => handleEchoChange(idx, 'substat', e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", fontSize: "0.85rem" }} />
+                ))}
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 3. Stats & Metadata */}
       <div style={{ paddingTop: "24px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <h2 style={{ fontSize: "1rem", color: "var(--acid)", textTransform: "uppercase", letterSpacing: "0.1em", margin: 0 }}>3. Final Stats</h2>
@@ -346,7 +416,18 @@ export default function BuildForm({ initialData, buildId }: { initialData?: any,
         </div>
 
         <div style={{ display: "grid", gap: "16px" }}>
-          <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Primary Sonata Effect</label><input required type="text" value={formData.echo_set} onChange={e => setFormData({...formData, echo_set: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
+          <div>
+            <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Primary Sonata Effect</label>
+            <SearchableSelect 
+              items={SONATA_EFFECTS} value={SONATA_EFFECTS.find(s => s.name === formData.echo_set)?.id || ""} onChange={val => setFormData({...formData, echo_set: val})} placeholder="Select Sonata Effect"
+              renderItem={(item) => (
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
+                  <img src={getAssetUrl('sonata', `${assetSlug(item.name)}.webp`)} style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", background: "rgba(255,255,255,0.05)" }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                  <span style={{ flex: 1 }}>{item.name}</span>
+                </div>
+              )}
+            />
+          </div>
           <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Headline</label><input required type="text" value={formData.headline} onChange={e => setFormData({...formData, headline: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} /></div>
           <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Description</label><textarea required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", minHeight: "60px" }} /></div>
           <div><label style={{ display: "block", fontSize: "0.75rem", marginBottom: "6px", color: "#d8d9dd" }}>Notes (One per line)</label><textarea value={notesStr} onChange={e => setNotesStr(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", minHeight: "80px" }} /></div>

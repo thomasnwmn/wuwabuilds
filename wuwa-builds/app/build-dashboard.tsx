@@ -3,10 +3,10 @@
 import { useEffect, useState, type MouseEvent, useRef } from "react";
 
 type Stat = { label: string; value: string };
-type Echo = { cost: string; name: string; set: string; stat: string; substat: string; image?: string };
+type Echo = { cost: string; name: string; set: string; stat: string; substats: Stat[]; image?: string };
 type Build = {
   id: string; builderId: string; name: string; initials: string; role: string; character: string;
-  weapon: { name: string; type: string; rarity: number }; level: string; rank: string;
+  weapon: { name: string; type: string; rarity: number }; weaponAscension?: number; level: string; rank: string;
   headline: string; description: string; element: string; score: string; echoSet: string;
   stats: Stat[]; echoes: Echo[]; notes: string[]; image?: string;
 };
@@ -19,6 +19,10 @@ function assetSlug(value: string) {
     .replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function getAssetUrl(folder: string, filename: string) {
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/game-assets/${folder}/${filename}`;
 }
 
 function statIconName(label: string) {
@@ -37,7 +41,15 @@ function statIconName(label: string) {
 }
 
 function SparkMark() {
-  return <svg viewBox="0 0 52 52" aria-hidden="true" className="spark-mark"><path d="M26 4 31.9 19l16.1 7-16.1 7L26 48l-5.9-15L4 26l16.1-7L26 4Z" /><path d="m26 14 2.8 9.2L38 26l-9.2 2.8L26 38l-2.8-9.2L14 26l9.2-2.8L26 14Z" className="spark-core" /></svg>;
+  return (
+    <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2L14 10L22 12L14 14L12 22L10 14L2 12L10 10L12 2Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function StatIcon({ label }: { label: string }) {
+  return <img className="stat-svg" src={getAssetUrl('icons', `${statIconName(label)}.svg`)} alt="" />;
 }
 
 function ArrowIcon() {
@@ -48,11 +60,8 @@ function ChevronDownIcon() {
   return <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" style={{ fill: "none", stroke: "currentColor", strokeWidth: 1.5 }}><path d="M4 6l4 4 4-4" /></svg>;
 }
 
-function StatIcon({ label }: { label: string }) {
-  return <img className="stat-svg" src={`/icons/${statIconName(label)}.svg`} alt="" />;
-}
-
 export default function BuildDashboard() {
+  const [builders, setBuilders] = useState<any[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [selectedBuilderId, setSelectedBuilderId] = useState<string | null>(null);
   const [selectedBuildId, setSelectedBuildId] = useState<string | null>(null);
@@ -69,28 +78,32 @@ export default function BuildDashboard() {
       try {
         const supabase = (await import("@/lib/supabase/client")).createClient();
         
-        // Fetch builds with all relations
-        const { data, error } = await supabase
-          .from('builds')
-          .select(`
+        const [builderRes, buildsRes] = await Promise.all([
+          supabase.from('builders').select('*').order('sort_order', { ascending: true }),
+          supabase.from('builds').select(`
             *,
             resonator:resonators(*),
             weapon:weapons(*),
             stats:build_stats(*),
-            echoes:build_echoes(*, echo:echoes(*))
-          `)
-          .order('created_at', { ascending: false });
+            echoes:build_echoes(*, echo:echoes(*)),
+            builder:builders(*)
+          `).order('created_at', { ascending: false })
+        ]);
           
-        if (error) throw error;
+        if (buildsRes.error) throw buildsRes.error;
         if (!isCurrent) return;
-        if (!data || data.length === 0) return;
+
+        const allBuilders = builderRes.data || [];
+        setBuilders(allBuilders);
+        
+        if (!buildsRes.data || buildsRes.data.length === 0) return;
 
         // Map database schema back to the shape the UI expects safely
-        const mappedBuilds = data.map(b => ({
+        const mappedBuilds = buildsRes.data.map(b => ({
           id: b.id,
-          builderId: (b.builder_initials || 'U') + '-' + (b.builder_name || 'Unknown'),
-          name: b.builder_name || 'Unknown',
-          initials: b.builder_initials || 'U',
+          builderId: b.builder_id || '',
+          name: b.builder?.name || b.builder_name || 'Unknown',
+          initials: b.builder?.initials || b.builder_initials || 'U',
           role: b.role || 'MAIN DAMAGE',
           character: b.resonator?.name || 'Unknown',
           weapon: { 
@@ -99,6 +112,7 @@ export default function BuildDashboard() {
             rarity: b.weapon?.rarity || 4 
           },
           level: b.level || 'LEVEL 90',
+          weaponAscension: b.weapon_ascension || 1,
           rank: b.rank || 'SEQUENCE 0',
           headline: b.headline || '',
           description: b.description || '',
@@ -111,14 +125,25 @@ export default function BuildDashboard() {
             name: e.echo?.name || 'Unknown',
             set: e.echo_set || '',
             stat: e.main_stat || '',
-            substat: e.substat || ''
+            substats: Array.isArray(e.substats) ? e.substats : (e.substat ? [{ label: "Unknown", value: e.substat }] : [])
           })).sort((a: any, b: any) => parseInt(b.cost) - parseInt(a.cost)), // Sort echoes by cost desc (4,3,3,1,1)
           notes: b.notes || []
         }));
 
         setBuilds(mappedBuilds);
+        
         const requestedId = new URLSearchParams(window.location.search).get("build");
-        const currentBuild = mappedBuilds.find((build: any) => build.id === requestedId) ?? mappedBuilds[0];
+        let currentBuild = mappedBuilds.find((build: any) => build.id === requestedId);
+        
+        // If no explicit build is selected, prioritize Thomas's first build
+        if (!currentBuild) {
+           const thomasBuilder = allBuilders.find(b => b.name === 'Thomas');
+           if (thomasBuilder) {
+             currentBuild = mappedBuilds.find(b => b.builderId === thomasBuilder.id);
+           }
+           if (!currentBuild) currentBuild = mappedBuilds[0];
+        }
+
         if (currentBuild) {
           setSelectedBuildId(currentBuild.id);
           setSelectedBuilderId(currentBuild.builderId);
@@ -214,23 +239,19 @@ export default function BuildDashboard() {
   function getResonatorImage(b: Build) {
     if (b.image) return b.image;
     if (b.character.toLowerCase() === "rover") {
-      return `/resonators/${b.element.toLowerCase()}-rover.webp`;
+      return getAssetUrl('resonators', `${b.element.toLowerCase()}-rover.webp`);
     }
-    return `/resonators/${assetSlug(b.character)}.webp`;
+    return getAssetUrl('resonators', `${assetSlug(b.character)}.webp`);
   }
 
   const build = builds.find((entry) => entry.id === selectedBuildId) ?? builds[0];
-  const resonatorImage = getResonatorImage(build);
-  const weaponIcon = `/icons/${assetSlug(build.weapon.type)}.svg`;
-  
-  const uniqueBuilders = Array.from(new Set(builds.map(b => b.builderId))).map(id => builds.find(b => b.builderId === id)!);
-  const builderBuilds = builds.filter(b => b.builderId === selectedBuilderId);
+  const resonatorImage = getResonatorImage(build);  const builderBuilds = builds.filter(b => b.builderId === selectedBuilderId);
 
   return <main className="builds-app">
     {isModalOpen && (
       <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
         <div className="modal-content frosted-card" onClick={e => e.stopPropagation()}>
-          <button className="modal-close" onClick={() => setIsModalOpen(false)}>✕</button>
+          <button className="modal-close" onClick={() => setIsModalOpen(false)}>✕ </button>
           <div className="modal-header">
             <h2>{build.character} - Full Stat Sheet</h2>
             <p className="modal-subtitle">{build.headline}</p>
@@ -258,9 +279,9 @@ export default function BuildDashboard() {
       <div className="profile-nav">
         <span className="nav-label">BUILDERS</span>
         <div className="profile-pills">
-          {uniqueBuilders.map((profile) => {
-            const isActive = profile.builderId === selectedBuilderId;
-            return <button className={`profile-pill${isActive ? " is-active" : ""}`} key={profile.builderId} onClick={() => selectBuilder(profile.builderId)} onMouseMove={setNavGlow} aria-current={isActive ? "page" : undefined}>
+          {builders.map((profile) => {
+            const isActive = profile.id === selectedBuilderId;
+            return <button className={`profile-pill${isActive ? " is-active" : ""}`} key={profile.id} onClick={() => selectBuilder(profile.id)} onMouseMove={setNavGlow} aria-current={isActive ? "page" : undefined}>
               <span className="profile-initials">{profile.initials}</span><span>{profile.name}</span>{isActive && <span className="active-pulse" />}
             </button>;
           })}
@@ -319,11 +340,56 @@ export default function BuildDashboard() {
 
         <section className="loadout-panel frosted-card">
           <div className="card-heading"><span>02 / LOADOUT</span><p>CALIBRATED</p></div>
-          <div className="weapon-display"><div className="weapon-glyph"><img src={weaponIcon} alt="" /></div><div><p>WEAPON</p><h2>{build.weapon.name}</h2><span>{build.weapon.type} <b>•</b> {"★".repeat(build.weapon.rarity)}</span></div><span className="weapon-level">Lv. 90</span></div>
-          <div className="set-rule" /><div className="echo-set"><span>SONATA EFFECT</span><strong>{build.echoSet}</strong><em>5 / 5</em></div>
+          <div className="weapon-display">
+            <div className="weapon-glyph">
+              <img src={getAssetUrl('weapons', `${assetSlug(build.weapon.name)}.webp`)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={(event) => event.currentTarget.classList.add("asset-unavailable")} />
+            </div>
+            <div>
+              <p>WEAPON</p>
+              <h2>{build.weapon.name}</h2>
+              <span>{build.weapon.type} <b>•</b> {"★".repeat(build.weapon.rarity)}</span>
+            </div>
+            <div className="weapon-level-wrap">
+              <span className="weapon-level">Lv. 90</span>
+              <span className="weapon-rank">ASCENSION {build.weaponAscension}</span>
+            </div>
+          </div>
+          <div className="set-rule" />
+          <div className="echo-set-header">
+            <div className="echo-set-left">
+              <span className="echo-set-eyebrow">SONATA EFFECT</span>
+              <div className="echo-set-title">
+                {build.echoSet && <img src={getAssetUrl('sonata', `${assetSlug(build.echoSet)}.webp`)} alt="" className="set-icon" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} />}
+                <strong>{build.echoSet}</strong>
+              </div>
+            </div>
+            <em>5 / 5</em>
+          </div>
           <div className="echo-list">{build.echoes.map((echo, index) => {
-            const echoImage = echo.image ?? `/echoes/${assetSlug(echo.name)}.webp`;
-            return <article className="echo-row" key={`${echo.cost}-${echo.name}-${index}`}><span className="echo-cost">{echo.cost}</span><span className="echo-thumb"><img src={echoImage} alt="" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} /></span><div><h3>{echo.name}</h3><p>{echo.set}</p></div><span className="echo-stat">{echo.stat}<small>{echo.substat}</small></span></article>;
+            const echoImage = echo.image ?? getAssetUrl('echoes', `${assetSlug(echo.name)}.webp`);
+            return (
+              <article className="echo-row" key={`${echo.cost}-${echo.name}-${index}`}>
+                <span className="echo-thumb-wrap">
+                  <img src={getAssetUrl('sonata', `${assetSlug(echo.set)}.webp`)} alt={echo.set} className="echo-sonata-icon" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} title={echo.set} />
+                  <span className="echo-cost-badge">{echo.cost}</span>
+                  <span className="echo-thumb">
+                    <img src={echoImage} alt="" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} />
+                  </span>
+                </span>
+                <div className="echo-info">
+                  <h3>{echo.name}</h3>
+                  <p className="echo-mainstat">{echo.stat}</p>
+                </div>
+                <div className="echo-substats-list">
+                  {echo.substats.map((sub, i) => sub.label && sub.value ? (
+                    <div key={i} className="echo-substat-item">
+                      <span>{sub.label}</span>
+                      <strong>{sub.value}</strong>
+                    </div>
+                  ) : null)}
+                </div>
+              </article>
+            );
           })}</div>
         </section>
 
