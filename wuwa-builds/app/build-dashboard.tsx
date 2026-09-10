@@ -414,7 +414,7 @@ export default function BuildDashboard() {
           <div className="echo-list">{build.echoes.map((echo, index) => {
             const echoImage = echo.image ?? getAssetUrl('echoes', `${assetSlug(echo.name)}.webp`);
             return (
-              <article className="echo-row" key={`${echo.cost}-${echo.name}-${index}`}>
+              <article className="echo-row animate-in" style={{ animationDelay: `${index * 0.08}s` }} key={`${echo.cost}-${echo.name}-${index}`}>
                 <span className="echo-thumb-wrap">
                   <img src={getAssetUrl('sonata', `${assetSlug(echo.set)}.webp`)} alt={echo.set} className="echo-sonata-icon" onError={(event) => event.currentTarget.classList.add("asset-unavailable")} title={echo.set} />
                   <span className="echo-cost-badge">{echo.cost}</span>
@@ -441,7 +441,18 @@ export default function BuildDashboard() {
 
         <section className="stats-panel frosted-card">
           <div className="card-heading"><span>03 / CORE SIGNAL</span><p>{build.element.toUpperCase()}</p></div>
-          <div className="stat-list" key={build.id}>{build.stats.slice(0, 4).map((stat) => <div className="stat-row" key={stat.label}><span className="stat-symbol"><StatIcon label={stat.label} /></span><span>{stat.label}</span><strong>{stat.value}</strong><div className="stat-line"><i style={{ "--target-width": `${getStatPercentage(stat.label, stat.value)}%` } as React.CSSProperties} /></div></div>)}</div>
+          <div className="stat-list" key={build.id}>
+            {build.stats.map((stat, index) => (
+              <div className="stat-row animate-in" style={{ animationDelay: `${index * 0.06}s` }} key={stat.label}>
+                <span className="stat-symbol"><StatIcon label={stat.label} /></span>
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+                <div className="stat-line">
+                  <i style={{ "--target-width": `${getStatPercentage(stat.label, stat.value)}%` } as React.CSSProperties} />
+                </div>
+              </div>
+            ))}
+          </div>
           <div className="stat-footer"><span>RATIO</span><strong>1 : 3.3</strong><span className="verified">◉ VERIFIED</span></div>
         </section>
       </div>
