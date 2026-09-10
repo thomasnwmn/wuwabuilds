@@ -68,6 +68,9 @@ export default function BuildDashboard() {
   const [loadError, setLoadError] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pillsContainerRef = useRef<HTMLDivElement>(null);
+
+  const [highlightStyle, setHighlightStyle] = useState({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -180,6 +183,32 @@ export default function BuildDashboard() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!selectedBuilderId || !pillsContainerRef.current) return;
+    
+    function updateHighlight() {
+      const activePill = pillsContainerRef.current?.querySelector(`[data-builder-id="${selectedBuilderId}"]`) as HTMLElement;
+      if (activePill) {
+        setHighlightStyle({
+          left: activePill.offsetLeft,
+          top: activePill.offsetTop,
+          width: activePill.offsetWidth,
+          height: activePill.offsetHeight,
+          opacity: 1
+        });
+      }
+    }
+
+    // We use setTimeout to ensure layout has occurred and elements are in their final positions
+    const timer = setTimeout(updateHighlight, 10);
+    
+    window.addEventListener("resize", updateHighlight);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", updateHighlight);
+    };
+  }, [selectedBuilderId, builders]);
+
   function getStatPercentage(label: string, valueStr: string) {
     const val = parseFloat(valueStr.replace(/[^0-9.]/g, ''));
     if (isNaN(val)) return 0;
@@ -278,11 +307,28 @@ export default function BuildDashboard() {
       <a className="brand" href="/" aria-label="Wuwa Builds home"><span className="brand-mark"><SparkMark /></span><span className="brand-name">WUWA <em>BUILDS</em></span></a>
       <div className="profile-nav">
         <span className="nav-label">BUILDERS</span>
-        <div className="profile-pills">
+        <div className="profile-pills" ref={pillsContainerRef}>
+          <div 
+            className="profile-pill-highlight" 
+            style={{
+              position: "absolute",
+              left: highlightStyle.left,
+              top: highlightStyle.top,
+              width: highlightStyle.width,
+              height: highlightStyle.height,
+              background: "linear-gradient(115deg, #dfff84, #b4ff79)",
+              boxShadow: "0 0 24px rgba(211,255,101,.16)",
+              borderRadius: "999px",
+              transition: "all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)",
+              opacity: highlightStyle.opacity,
+              pointerEvents: "none",
+              zIndex: 0
+            }} 
+          />
           {builders.map((profile) => {
             const isActive = profile.id === selectedBuilderId;
-            return <button className={`profile-pill${isActive ? " is-active" : ""}`} key={profile.id} onClick={() => selectBuilder(profile.id)} onMouseMove={setNavGlow} aria-current={isActive ? "page" : undefined}>
-              <span className="profile-initials">{profile.initials}</span><span>{profile.name}</span>{isActive && <span className="active-pulse" />}
+            return <button data-builder-id={profile.id} className={`profile-pill${isActive ? " is-active" : ""}`} key={profile.id} onClick={() => selectBuilder(profile.id)} onMouseMove={setNavGlow} aria-current={isActive ? "page" : undefined} style={{ zIndex: 1 }}>
+              <span className="profile-initials">{profile.initials}</span><span>{profile.name}</span>
             </button>;
           })}
         </div>
