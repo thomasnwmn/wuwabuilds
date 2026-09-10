@@ -57,7 +57,7 @@ function ArrowIcon() {
 }
 
 function ChevronDownIcon() {
-  return <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" style={{ fill: "none", stroke: "currentColor", strokeWidth: 1.5 }}><path d="M4 6l4 4 4-4" /></svg>;
+  return <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" style={{ fill: "none", stroke: "currentColor", strokeWidth: 1.5, flexShrink: 0 }}><path d="M4 6l4 4 4-4" /></svg>;
 }
 
 export default function BuildDashboard() {
